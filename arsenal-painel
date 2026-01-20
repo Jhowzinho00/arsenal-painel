@@ -1,0 +1,227 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "PAINEL ARSENAL",
+   LoadingTitle = "PAINEL ARSENAL - Red Edition",
+   LoadingSubtitle = "by Jhow",
+   ConfigurationSaving = { Enabled = true, FolderName = "PainelArsenal", FileName = "Config" },
+   
+   -- [ SISTEMA DE KEY ] --
+   KeySystem = true, 
+   KeySettings = {
+      Title = "Sistema de Verificação",
+      Subtitle = "Entre com a Chave",
+      Note = "A chave é: tung sahur",
+      FileName = "ArsenalKey", 
+      SaveKey = true,
+      GrabKeyFromSite = false,
+      Key = {"tung sahur"}
+   },
+   
+   Theme = "DarkRed",
+   Size = UDim2.fromOffset(450, 350) 
+})
+
+local Tab = Window:CreateTab("Principal", 4483362458) 
+
+-- Variáveis de Controle
+local AimbotEnabled = false
+local HeadshotLock = false
+local WallCheck = false 
+local Smoothing = 0.25 
+local ESPEnabled = false
+local ESP_Lines_Enabled = false
+local ESP_Skeleton_Enabled = false 
+local ESP_Health_Enabled = false
+local ESP_Distance_Enabled = false
+local FOV_Visible = false 
+local FOV_Radius = 150 
+local ESP_Objects = {}
+
+-- Serviços
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+-- Configuração do FOV
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 1.5
+FOVCircle.Color = Color3.fromRGB(255, 0, 0)
+FOVCircle.Filled = false 
+FOVCircle.Visible = false
+
+--- [ FUNÇÃO WALL CHECK ] ---
+local function IsVisible(targetPart)
+    if not WallCheck then return true end
+    local char = LocalPlayer.Character
+    if not char then return false end
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    raycastParams.FilterDescendantsInstances = {char, camera}
+    local ray = workspace:Raycast(camera.CFrame.Position, (targetPart.Position - camera.CFrame.Position).Unit * 1000, raycastParams)
+    if ray then return ray.Instance:IsDescendantOf(targetPart.Parent) end
+    return true
+end
+
+--- [ FUNÇÕES ESP ] ---
+local function CreateESP(plr)
+    local objects = {
+        Box = Drawing.new("Square"),
+        Line = Drawing.new("Line"),
+        HealthBarOutline = Drawing.new("Square"),
+        HealthBar = Drawing.new("Square"),
+        Distance = Drawing.new("Text"),
+        Skeleton = {} 
+    }
+    
+    objects.Box.Filled = false
+    objects.Box.Thickness = 1.5
+    
+    objects.Distance.Size = 14
+    objects.Distance.Center = true
+    objects.Distance.Outline = true
+    objects.Distance.Color = Color3.fromRGB(255, 255, 255)
+    
+    objects.HealthBarOutline.Filled = true
+    objects.HealthBarOutline.Color = Color3.fromRGB(0, 0, 0)
+    objects.HealthBar.Filled = true
+    
+    for i = 1, 6 do
+        objects.Skeleton[i] = Drawing.new("Line")
+        objects.Skeleton[i].Thickness = 1.5
+        objects.Skeleton[i].Visible = false
+    end
+
+    ESP_Objects[plr] = objects
+end
+
+--- [ UI ] ---
+Tab:CreateSection("Visuals (ESP)")
+Tab:CreateToggle({Name = "ESP BOX", CurrentValue = false, Callback = function(v) ESPEnabled = v end})
+Tab:CreateToggle({Name = "ESP DISTANCE", CurrentValue = false, Callback = function(v) ESP_Distance_Enabled = v end})
+Tab:CreateToggle({Name = "ESP HEALTH", CurrentValue = false, Callback = function(v) ESP_Health_Enabled = v end})
+Tab:CreateToggle({Name = "ESP SKELETON", CurrentValue = false, Callback = function(v) ESP_Skeleton_Enabled = v end})
+Tab:CreateToggle({Name = "ESP LINES", CurrentValue = false, Callback = function(v) ESP_Lines_Enabled = v end})
+
+Tab:CreateSection("Auto Headshot & Aim")
+Tab:CreateToggle({Name = "WALL CHECK", CurrentValue = false, Callback = function(v) WallCheck = v end})
+Tab:CreateToggle({Name = "HEADSHOT LOCK", CurrentValue = false, Callback = function(v) HeadshotLock = v end})
+Tab:CreateToggle({Name = "AIMBOT (SMOOTH)", CurrentValue = false, Callback = function(v) AimbotEnabled = v end})
+Tab:CreateSlider({Name = "SMOOTHING", Range = {1, 100}, Increment = 1, Suffix = "%", CurrentValue = 25, Callback = function(v) Smoothing = v/100 end})
+Tab:CreateToggle({Name = "SHOW FOV", CurrentValue = false, Callback = function(v) FOV_Visible = v end})
+Tab:CreateSlider({Name = "FOV SIZE", Range = {50, 800}, Increment = 10, Suffix = "px", CurrentValue = 150, Callback = function(v) FOV_Radius = v end})
+
+--- [ LOOP PRINCIPAL ] ---
+RunService.RenderStepped:Connect(function()
+    local viewportSize = camera.ViewportSize
+    FOVCircle.Position = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
+    FOVCircle.Radius = FOV_Radius
+    FOVCircle.Visible = FOV_Visible
+
+    local closestTarget = nil
+    local maxDistance = FOV_Radius
+
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            if not ESP_Objects[plr] then CreateESP(plr) end
+            local obj = ESP_Objects[plr]
+            local char = plr.Character
+            local hum = char:FindFirstChild("Humanoid")
+            local hrp = char.HumanoidRootPart
+            local head = char:FindFirstChild("Head")
+
+            local vector, onScreen = camera:WorldToViewportPoint(hrp.Position)
+
+            if onScreen and hum and hum.Health > 0 then
+                local sizeX = 2000 / vector.Z
+                local sizeY = 2500 / vector.Z
+                local posX = vector.X - sizeX/2
+                local posY = vector.Y - sizeY/2
+
+                -- BOX
+                obj.Box.Visible = ESPEnabled
+                if ESPEnabled then
+                    obj.Box.Size = Vector2.new(sizeX, sizeY)
+                    obj.Box.Position = Vector2.new(posX, posY)
+                    obj.Box.Color = plr.TeamColor.Color
+                end
+
+                -- DISTANCE
+                if ESP_Distance_Enabled then
+                    local dist = math.floor((camera.CFrame.Position - hrp.Position).Magnitude)
+                    obj.Distance.Text = "[" .. tostring(dist) .. " studs]"
+                    obj.Distance.Position = Vector2.new(vector.X, posY + sizeY + 5)
+                    obj.Distance.Visible = true
+                else
+                    obj.Distance.Visible = false
+                end
+
+                -- HEALTH
+                if ESP_Health_Enabled then
+                    local healthPercent = hum.Health / hum.MaxHealth
+                    obj.HealthBarOutline.Visible = true
+                    obj.HealthBarOutline.Size = Vector2.new(4, sizeY)
+                    obj.HealthBarOutline.Position = Vector2.new(posX - 6, posY)
+                    obj.HealthBar.Visible = true
+                    obj.HealthBar.Size = Vector2.new(2, sizeY * healthPercent)
+                    obj.HealthBar.Position = Vector2.new(posX - 5, posY + (sizeY - (sizeY * healthPercent)))
+                    obj.HealthBar.Color = Color3.fromHSV(healthPercent * 0.3, 1, 1)
+                else
+                    obj.HealthBarOutline.Visible = false
+                    obj.HealthBar.Visible = false
+                end
+
+                -- SKELETON
+                if ESP_Skeleton_Enabled and head then
+                    local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+                    local larm = char:FindFirstChild("LeftUpperArm") or char:FindFirstChild("Left Arm")
+                    local rarm = char:FindFirstChild("RightUpperArm") or char:FindFirstChild("Right Arm")
+                    local lleg = char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("Left Leg")
+                    local rleg = char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("Right Leg")
+                    local joints = {{head, torso}, {torso, larm}, {torso, rarm}, {torso, hrp}, {hrp, lleg}, {hrp, rleg}}
+                    for i, joint in pairs(joints) do
+                        if joint[1] and joint[2] then
+                            local p1 = camera:WorldToViewportPoint(joint[1].Position)
+                            local p2 = camera:WorldToViewportPoint(joint[2].Position)
+                            obj.Skeleton[i].Visible = true
+                            obj.Skeleton[i].From = Vector2.new(p1.X, p1.Y)
+                            obj.Skeleton[i].To = Vector2.new(p2.X, p2.Y)
+                            obj.Skeleton[i].Color = Color3.fromRGB(255, 255, 255)
+                        else obj.Skeleton[i].Visible = false end
+                    end
+                else
+                    for i=1,6 do obj.Skeleton[i].Visible = false end
+                end
+
+                -- AIMBOT TARGETING
+                if (AimbotEnabled or HeadshotLock) and plr.TeamColor ~= LocalPlayer.TeamColor then
+                    local screenHead, headVisible = camera:WorldToViewportPoint(head.Position)
+                    if headVisible and IsVisible(head) then
+                        local mouseDistance = (Vector2.new(screenHead.X, screenHead.Y) - Vector2.new(viewportSize.X/2, viewportSize.Y/2)).Magnitude
+                        if mouseDistance < maxDistance then
+                            closestTarget = head
+                            maxDistance = mouseDistance
+                        end
+                    end
+                end
+            else
+                obj.Box.Visible = false
+                obj.Distance.Visible = false
+                obj.HealthBar.Visible = false
+                obj.HealthBarOutline.Visible = false
+                for i=1,6 do obj.Skeleton[i].Visible = false end
+            end
+        end
+    end
+
+    -- AIMBOT EXECUTION
+    if closestTarget then
+        local targetPos = closestTarget.Position
+        if HeadshotLock then
+            camera.CFrame = CFrame.new(camera.CFrame.Position, targetPos)
+        elseif AimbotEnabled then
+            camera.CFrame = camera.CFrame:Lerp(CFrame.new(camera.CFrame.Position, targetPos), Smoothing)
+        end
+    end
+end)
